@@ -1,0 +1,23 @@
+.appearance-hint { font-size: 12.5px; color: var(--slate-500); margin: 0 0 18px; line-height: 1.6; }
+
+.theme-grid { display: flex; flex-direction: column; gap: 10px; }
+
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-md);
+  background: white;
+  text-align: left;
+  position: relative;
+}
+.theme-option:hover { border-color: var(--slate-400); }
+.theme-option.selected { border-color: var(--teal-600); box-shadow: 0 0 0 2px rgba(0,0,0,0.03); }
+
+.theme-swatch { display: flex; border-radius: 5px; overflow: hidden; width: 44px; height: 28px; flex: 0 0 auto; }
+.theme-swatch span { flex: 1; }
+
+.theme-name { font-size: 13px; font-weight: 600; color: var(--slate-700); }
+.theme-check { margin-left: auto; color: var(--teal-600); font-weight: 700; }
