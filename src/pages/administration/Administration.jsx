@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../../context/ToastContext';
-import { storage } from '../../services/storageService';
 import '../payroll/Payroll.css';
 
 const TABS = ['Company Settings', 'Branches', 'Departments', 'Financial Year & Period', 'Document Numbering', 'Approval Workflow', 'Tax & Currency', 'System Settings'];
+
+const LS_KEY = 'erp_admin_settings'; // UI-only configuration; not core business data, so it stays local per browser
 
 const defaultSettings = {
   company: { name: 'Meridian Manufacturing Group', address: '4820 Industrial Pkwy, Fremont, CA', taxId: 'US-84-1029384', fiscalYearStart: '01-Jan' },
@@ -28,16 +29,14 @@ export default function Administration() {
   const [settings, setSettings] = useState(null);
 
   useEffect(() => {
-    storage.getAll('adminSettings').then((data) => {
-      setSettings(Array.isArray(data) && data.length === 0 ? defaultSettings : data);
-      if (Array.isArray(data) && data.length === 0) storage.setAllSync('adminSettings', defaultSettings);
-    });
+    const raw = localStorage.getItem(LS_KEY);
+    setSettings(raw ? JSON.parse(raw) : defaultSettings);
   }, []);
 
   const save = (patch) => {
     const updated = { ...settings, ...patch };
     setSettings(updated);
-    storage.setAllSync('adminSettings', updated);
+    localStorage.setItem(LS_KEY, JSON.stringify(updated));
     toast.success('Settings saved.');
   };
 

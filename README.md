@@ -68,13 +68,40 @@ src/
   routes/             AppRoutes, ProtectedRoute
 ```
 
-## Connecting a real backend later
+## Database — Postgres (Neon via Vercel)
 
-Every entity (`materialService`, `businessPartnerService`, `purchaseInvoiceService`, …) in
-`dataService.js` exposes the same four methods: `list()`, `get(id)`, `create(record)`,
-`update(id, patch)`, `remove(id)` — all promise-based. To connect a real API, replace the bodies of
-these functions with `fetch`/`axios` calls; no page or component needs to change. `authService.js`
-is similarly isolated for swapping in real authentication (e.g. JWT + backend session).
+This project now runs on a real Postgres database, not `localStorage`. It works like this:
+
+- **`/api`** — serverless functions (Vercel Node runtime) exposing a generic REST layer:
+  - `GET/POST /api/entities/:table` — list / create
+  - `GET/PUT/DELETE /api/entities/:table/:id` — read / update / delete one record
+  - `POST /api/seed` — idempotent one-time seed; populates every table from `src/data/mockData.js`, skipping any table that already has rows
+- **`src/services/storageService.js`** — the only file that changed on the frontend side. It now calls those API routes instead of `localStorage`, using the exact same function signatures (`getAll`, `getById`, `create`, `update`, `remove`) — so `dataService.js` and every page using it needed no changes beyond awaiting two previously-synchronous helpers (dashboard KPIs, global search).
+- **Table shape**: every entity is stored generically as `id TEXT, code TEXT, data JSONB` (see `db/schema.sql`). This mirrors the record shapes already used throughout the app, so no data-shape migration was needed. Tables are auto-created on first request — no manual migration step required.
+
+### Setup
+
+1. In your Vercel project, enable Postgres (Storage tab) and connect it to the project — this injects `DATABASE_URL` / `POSTGRES_URL` into your environment automatically.
+2. Deploy. On first page load, the app calls `POST /api/seed` automatically (see `initMockDatabase()` in `App.jsx`), which creates all 32 tables and populates them with the sample data.
+3. That's it — every module now reads/writes real Postgres rows.
+
+### Local development
+
+`npm run dev` (plain Vite) will **not** serve the `/api` routes — Vite's dev server only serves the frontend. To test the API locally:
+
+```bash
+npm install -g vercel
+vercel link      # link this folder to your Vercel project (one-time)
+vercel env pull .env.local   # pulls DATABASE_URL etc. into a local, git-ignored file
+vercel dev       # serves both the Vite frontend AND /api routes together
+```
+
+Without `vercel dev`, running `npm run dev` alone will show network errors on every screen (API calls with nowhere to go) — that's expected; deploy to Vercel or use `vercel dev` instead.
+
+### What's still local-only
+
+- **Authentication** (`authService.js`) — still a client-side credential check + session in `localStorage`. Wiring real auth (hashed passwords in the `users` table, server-verified sessions) is a natural next step but wasn't part of this pass, since it's more security-sensitive than the data layer.
+- **Administration → Company Settings** — UI preferences only, intentionally kept per-browser in `localStorage` rather than a shared DB table.
 
 ## What's implemented
 

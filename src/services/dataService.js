@@ -1,46 +1,16 @@
-import { storage, ensureSeeded, nextId } from './storageService';
-import * as seed from '../data/mockData';
+import { storage, nextId } from './storageService';
 
-// ---- Seed everything on first load ----
-const registry = {
-  materialGroups: seed.seedMaterialGroups,
-  materials: seed.seedMaterials,
-  businessPartners: seed.seedBusinessPartners,
-  warehouses: seed.seedWarehouses,
-  binLocations: seed.seedBinLocations,
-  uom: seed.seedUOM,
-  uomConversion: seed.seedUOMConversion,
-  currencies: seed.seedCurrencies,
-  exchangeRates: seed.seedExchangeRates,
-  paymentTerms: seed.seedPaymentTerms,
-  taxMaster: seed.seedTaxMaster,
-  costCenters: seed.seedCostCenters,
-  profitCenters: seed.seedProfitCenters,
-  bankMaster: seed.seedBankMaster,
-  assetClass: seed.seedAssetClass,
-  fixedAssets: seed.seedFixedAssets,
-  expenseMaster: seed.seedExpenseMaster,
-  chartOfAccounts: seed.seedChartOfAccounts,
-  purchaseInvoices: seed.seedPurchaseInvoices,
-  salesInvoices: seed.seedSalesInvoices,
-  paymentsMade: seed.seedPaymentsMade,
-  paymentsReceived: seed.seedPaymentsReceived,
-  bankTransactions: seed.seedBankTransactions,
-  expenseTransactions: seed.seedExpenseTransactions,
-  journalEntries: seed.seedJournalEntries,
-  stockTransfers: seed.seedStockTransfers,
-  employees: seed.seedEmployees,
-  payrollRuns: seed.seedPayrollRuns,
-  users: seed.seedUsers,
-  roles: seed.seedRoles,
-  notifications: seed.seedNotifications,
-  auditLog: [
-    { id: 'AUD001', user: 'noman', module: 'Purchase Invoice', document: 'PI-10025', action: 'Quantity changed', previousValue: '100', newValue: '120', timestamp: '2026-09-16T22:35:00' },
-  ],
-};
-
-export function initMockDatabase() {
-  Object.entries(registry).forEach(([key, seedData]) => ensureSeeded(key, seedData));
+// Mock data now lives server-side (api/seed.js reads the same source file
+// and seeds Postgres on first call). initMockDatabase just triggers that
+// seed endpoint — it's idempotent, so calling it on every app load is safe;
+// tables that already have rows are skipped.
+export async function initMockDatabase() {
+  try {
+    const res = await fetch('/api/seed', { method: 'POST' });
+    if (!res.ok) throw new Error(`Seed request failed (${res.status})`);
+  } catch (err) {
+    console.error('Database seed failed — check DATABASE_URL is set in your Vercel project.', err);
+  }
 }
 
 // ---- Generic entity factory ----
@@ -102,10 +72,6 @@ export const notificationService = {
   async markRead(id) {
     return storage.update('notifications', id, { read: true });
   },
-  unreadCountSync() {
-    const all = storage.getAllSync('notifications');
-    return all.filter((n) => !n.read).length;
-  },
 };
 
 // ---- Audit Trail ----
@@ -132,13 +98,15 @@ export const auditService = {
 };
 
 // ---- Dashboard aggregation (reads live from the same stores modules mutate) ----
-export function computeDashboardKpis() {
-  const bp = storage.getAllSync('businessPartners');
-  const materials = storage.getAllSync('materials');
-  const pInv = storage.getAllSync('purchaseInvoices');
-  const sInv = storage.getAllSync('salesInvoices');
-  const payroll = storage.getAllSync('payrollRuns');
-  const assets = storage.getAllSync('fixedAssets');
+export async function computeDashboardKpis() {
+  const [bp, materials, pInv, sInv, payroll, assets] = await Promise.all([
+    storage.getAll('businessPartners'),
+    storage.getAll('materials'),
+    storage.getAll('purchaseInvoices'),
+    storage.getAll('salesInvoices'),
+    storage.getAll('payrollRuns'),
+    storage.getAll('fixedAssets'),
+  ]);
 
   const customers = bp.filter((b) => b.type === 'Customer');
   const suppliers = bp.filter((b) => b.type === 'Supplier');
@@ -178,37 +146,46 @@ export function computeDashboardKpis() {
 }
 
 // ---- Global search across modules ----
-export function globalSearch(query) {
+export async function globalSearch(query) {
   const q = query.trim().toLowerCase();
   if (!q) return [];
   const results = [];
 
-  storage.getAllSync('materials').forEach((m) => {
+  const [materials, partners, pInv, sInv, employees, assets] = await Promise.all([
+    storage.getAll('materials'),
+    storage.getAll('businessPartners'),
+    storage.getAll('purchaseInvoices'),
+    storage.getAll('salesInvoices'),
+    storage.getAll('employees'),
+    storage.getAll('fixedAssets'),
+  ]);
+
+  materials.forEach((m) => {
     if (m.code.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)) {
       results.push({ module: 'Materials', label: `${m.code} — ${m.name}`, route: '/master-data/material-master' });
     }
   });
-  storage.getAllSync('businessPartners').forEach((b) => {
+  partners.forEach((b) => {
     if (b.code.toLowerCase().includes(q) || b.name.toLowerCase().includes(q)) {
       results.push({ module: 'Business Partners', label: `${b.code} — ${b.name}`, route: '/master-data/business-partner' });
     }
   });
-  storage.getAllSync('purchaseInvoices').forEach((i) => {
+  pInv.forEach((i) => {
     if (i.docNo.toLowerCase().includes(q)) {
       results.push({ module: 'Purchase Invoices', label: i.docNo, route: '/transactions/purchase-invoice' });
     }
   });
-  storage.getAllSync('salesInvoices').forEach((i) => {
+  sInv.forEach((i) => {
     if (i.docNo.toLowerCase().includes(q)) {
       results.push({ module: 'Sales Invoices', label: i.docNo, route: '/transactions/sales-invoice' });
     }
   });
-  storage.getAllSync('employees').forEach((e) => {
+  employees.forEach((e) => {
     if (e.name.toLowerCase().includes(q) || e.empId.toLowerCase().includes(q)) {
       results.push({ module: 'Employees', label: `${e.empId} — ${e.name}`, route: '/payroll' });
     }
   });
-  storage.getAllSync('fixedAssets').forEach((a) => {
+  assets.forEach((a) => {
     if (a.code.toLowerCase().includes(q) || a.name.toLowerCase().includes(q)) {
       results.push({ module: 'Fixed Assets', label: `${a.code} — ${a.name}`, route: '/master-data/fixed-assets' });
     }

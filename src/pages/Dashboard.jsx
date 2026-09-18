@@ -15,7 +15,7 @@ export default function Dashboard() {
   const [kpis, setKpis] = useState(null);
 
   useEffect(() => {
-    setKpis(computeDashboardKpis());
+    computeDashboardKpis().then(setKpis).catch((err) => console.error('Failed to load dashboard KPIs', err));
   }, []);
 
   if (!kpis) return null;

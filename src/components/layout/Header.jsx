@@ -40,13 +40,16 @@ export default function Header({ onToggleMobileSidebar }) {
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
 
-  const handleSearch = (v) => {
+  const searchToken = useRef(0);
+
+  const handleSearch = async (v) => {
     setQuery(v);
-    if (v.trim()) {
-      setSearchResults(globalSearch(v));
+    if (!v.trim()) { setSearchOpen(false); return; }
+    const token = ++searchToken.current;
+    const results = await globalSearch(v);
+    if (token === searchToken.current) { // ignore stale responses from earlier keystrokes
+      setSearchResults(results);
       setSearchOpen(true);
-    } else {
-      setSearchOpen(false);
     }
   };
 

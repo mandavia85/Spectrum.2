@@ -1,73 +1,51 @@
-// Generic localStorage persistence layer.
-// Designed so each function can later be swapped for a real REST call
-// without changing the calling code (same signatures, promise-based).
+// Generic API client. Same function signatures as the previous localStorage
+// version, so dataService.js (and every page that consumes it) needed no
+// changes beyond making a couple of call sites await these now-async calls.
 
-const NS = 'erp_';
+const API_BASE = '/api/entities';
 
-function readRaw(key, fallback) {
-  try {
-    const raw = localStorage.getItem(NS + key);
-    if (raw === null) return fallback;
-    return JSON.parse(raw);
-  } catch {
-    return fallback;
+async function apiFetch(url, options) {
+  const res = await fetch(url, options);
+  if (!res.ok) {
+    let message = `Request failed (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body?.error) message = body.error;
+    } catch { /* ignore non-JSON error bodies */ }
+    throw new Error(message);
   }
+  if (res.status === 204) return null;
+  return res.json();
 }
-
-function writeRaw(key, value) {
-  localStorage.setItem(NS + key, JSON.stringify(value));
-}
-
-/** Ensure a collection exists in localStorage, seeding it on first run. */
-export function ensureSeeded(key, seedData) {
-  const existing = localStorage.getItem(NS + key);
-  if (existing === null) {
-    writeRaw(key, seedData);
-  }
-}
-
-/** Simulate network latency for realism (kept short). */
-const delay = (ms = 120) => new Promise((res) => setTimeout(res, ms));
 
 export const storage = {
   async getAll(key) {
-    await delay();
-    return readRaw(key, []);
+    return apiFetch(`${API_BASE}/${key}`);
   },
   async getById(key, id) {
-    await delay();
-    const all = readRaw(key, []);
-    return all.find((r) => r.id === id) || null;
+    try {
+      return await apiFetch(`${API_BASE}/${key}/${id}`);
+    } catch {
+      return null;
+    }
   },
   async create(key, record) {
-    await delay();
-    const all = readRaw(key, []);
-    all.unshift(record);
-    writeRaw(key, all);
-    return record;
+    return apiFetch(`${API_BASE}/${key}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(record),
+    });
   },
   async update(key, id, patch) {
-    await delay();
-    const all = readRaw(key, []);
-    const idx = all.findIndex((r) => r.id === id);
-    if (idx === -1) throw new Error('Record not found');
-    all[idx] = { ...all[idx], ...patch };
-    writeRaw(key, all);
-    return all[idx];
+    return apiFetch(`${API_BASE}/${key}/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
   },
   async remove(key, id) {
-    await delay();
-    const all = readRaw(key, []);
-    const filtered = all.filter((r) => r.id !== id);
-    writeRaw(key, filtered);
+    await apiFetch(`${API_BASE}/${key}/${id}`, { method: 'DELETE' });
     return true;
-  },
-  // Synchronous helpers used for cross-module dashboard aggregation
-  getAllSync(key) {
-    return readRaw(key, []);
-  },
-  setAllSync(key, value) {
-    writeRaw(key, value);
   },
 };
 
