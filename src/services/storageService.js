@@ -1,8 +1,12 @@
 // Generic API client. Same function signatures as the previous localStorage
 // version, so dataService.js (and every page that consumes it) needed no
 // changes beyond making a couple of call sites await these now-async calls.
-
-const API_BASE = '/api/entities';
+//
+// Routes are flat, static filenames with query params (?table=, &id=)
+// rather than dynamic bracket routes ([table].js) — Vercel only reliably
+// registers bracket dynamic API routes under the Next.js framework preset;
+// this project deploys under the Vite preset, so plain filenames are used
+// to guarantee the functions are recognized regardless of preset.
 
 async function apiFetch(url, options) {
   const res = await fetch(url, options);
@@ -11,7 +15,7 @@ async function apiFetch(url, options) {
     try {
       const body = await res.json();
       if (body?.error) message = body.error;
-    } catch { /* ignore non-JSON error bodies */ }
+    } catch { /* ignore non-JSON error bodies (e.g. an HTML error page) */ }
     throw new Error(message);
   }
   if (res.status === 204) return null;
@@ -20,31 +24,31 @@ async function apiFetch(url, options) {
 
 export const storage = {
   async getAll(key) {
-    return apiFetch(`${API_BASE}/${key}`);
+    return apiFetch(`/api/entities?table=${encodeURIComponent(key)}`);
   },
   async getById(key, id) {
     try {
-      return await apiFetch(`${API_BASE}/${key}/${id}`);
+      return await apiFetch(`/api/entity?table=${encodeURIComponent(key)}&id=${encodeURIComponent(id)}`);
     } catch {
       return null;
     }
   },
   async create(key, record) {
-    return apiFetch(`${API_BASE}/${key}`, {
+    return apiFetch(`/api/entities?table=${encodeURIComponent(key)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(record),
     });
   },
   async update(key, id, patch) {
-    return apiFetch(`${API_BASE}/${key}/${id}`, {
+    return apiFetch(`/api/entity?table=${encodeURIComponent(key)}&id=${encodeURIComponent(id)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     });
   },
   async remove(key, id) {
-    await apiFetch(`${API_BASE}/${key}/${id}`, { method: 'DELETE' });
+    await apiFetch(`/api/entity?table=${encodeURIComponent(key)}&id=${encodeURIComponent(id)}`, { method: 'DELETE' });
     return true;
   },
 };
